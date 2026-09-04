@@ -1,0 +1,28 @@
+name: "Upmerge chain"
+description: "Zieht die komplette Upmerge-Kette main -> release/X.Y -> naechsthoehere Release-Branches in einem Lauf durch, bis ein Hop fehlschlaegt (dann Fallback-PR)."
+
+inputs:
+  event-name:
+    description: "pull_request oder push"
+    required: true
+  base-ref:
+    description: "Ziel-Branch (bei pull_request) bzw. gepushter Branch (bei push)"
+    required: true
+  pr-merged:
+    description: "github.event.pull_request.merged als String 'true'/'false' (nur bei pull_request relevant)"
+    required: false
+    default: "false"
+  gh-token:
+    description: "Token fuer git push und die gh CLI (Fallback-PR-Erstellung)"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      env:
+        GITHUB_EVENT_NAME: ${{ inputs.event-name }}
+        BASE_REF: ${{ inputs.base-ref }}
+        PR_MERGED: ${{ inputs.pr-merged }}
+        GH_TOKEN: ${{ inputs.gh-token }}
+      run: bash "${{ github.action_path }}/upmerge-chain.sh"
