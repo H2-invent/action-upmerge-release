@@ -155,9 +155,9 @@ attempt_hop() {
 
 # Idempotent: existierenden offenen PR wiederverwenden statt Duplikat zu erzeugen.
 ensure_fallback_pr() {
-  local source="$1" target="$2"
+  local tmp="$1" source="$2" target="$2"
   local url
-  url="$(gh pr list --head "${source}" --base "${target}" --state open --json url --jq '.[0].url // empty' 2>/dev/null || true)"
+  url="$(gh pr list --head "${tmp}" --base "${target}" --state open --json url --jq '.[0].url // empty' 2>/dev/null || true)"
 
   if [ -n "$url" ]; then
     echo "$url"
@@ -165,7 +165,7 @@ ensure_fallback_pr() {
   fi
 
   gh pr create \
-    --base "${target}" \
+    --base "${tmp}" \
     --head "${source}" \
     --title "Upmerge ${source} -> ${target}" \
     --body "Automatischer Upmerge ist hier gestoppt (Konflikt oder Push nicht möglich, z.B. Branch-Protection). Bitte manuell auflösen und mergen - danach läuft die Kette beim nächsten Trigger automatisch weiter." \
@@ -203,10 +203,10 @@ for target in "${TARGETS[@]}"; do
       ;;
     failed)
       git checkout $current_source
-      tmp_branch=upmerge/$current_source-$(date +%d%m%Y%H%M)
+      tmp_branch=upmerge/$(date +%d%m%Y%H%M%S)
       git checkout -b $tmp_branch
       git push -u origin $tmp_branch
-      pr_url="$(ensure_fallback_pr "$tmp_branch" "$target")"
+      pr_url="$(ensure_fallback_pr "$tmp_branch" $current_source "$target")"
       if [ -n "$pr_url" ]; then
         echo "| ${hop_number} | \`${current_source}\` | \`${target}\` | ❌ Konflikt/Push abgelehnt - Fallback-PR: ${pr_url} |" >> "$SUMMARY"
       else
