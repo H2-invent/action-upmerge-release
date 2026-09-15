@@ -202,7 +202,11 @@ for target in "${TARGETS[@]}"; do
       current_source="$target"
       ;;
     failed)
-      pr_url="$(ensure_fallback_pr "$current_source" "$target")"
+      git checkout
+      tmp_branch=upmerge/$current_source-$target-$(date +%d%m%Y%H%M)
+      git checkout -b $tmp_branch
+      git push -u origin $tmp_branch
+      pr_url="$(ensure_fallback_pr "$tmp_branch" "$target")"
       if [ -n "$pr_url" ]; then
         echo "| ${hop_number} | \`${current_source}\` | \`${target}\` | ❌ Konflikt/Push abgelehnt - Fallback-PR: ${pr_url} |" >> "$SUMMARY"
       else
