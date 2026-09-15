@@ -202,8 +202,8 @@ for target in "${TARGETS[@]}"; do
       current_source="$target"
       ;;
     failed)
-      git checkout
-      tmp_branch=upmerge/$current_source-$target-$(date +%d%m%Y%H%M)
+      git checkout $current_source
+      tmp_branch=upmerge/$current_source-$(date +%d%m%Y%H%M)
       git checkout -b $tmp_branch
       git push -u origin $tmp_branch
       pr_url="$(ensure_fallback_pr "$tmp_branch" "$target")"
