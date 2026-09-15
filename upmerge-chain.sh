@@ -155,7 +155,7 @@ attempt_hop() {
 
 # Idempotent: existierenden offenen PR wiederverwenden statt Duplikat zu erzeugen.
 ensure_fallback_pr() {
-  local tmp="$1" source="$2" target="$2"
+  local tmp="$1" source="$2" target="$3"
   local url
   echo "Tmp Branch: $tmp"
   echo "Source Branch: $source"
