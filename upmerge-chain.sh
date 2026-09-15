@@ -157,6 +157,9 @@ attempt_hop() {
 ensure_fallback_pr() {
   local tmp="$1" source="$2" target="$2"
   local url
+  echo "Tmp Branch: $tmp"
+  echo "Source Branch: $source"
+  echo "Base Branch: $target"
   url="$(gh pr list --head "${tmp}" --base "${target}" --state open --json url --jq '.[0].url // empty' 2>/dev/null || true)"
 
   if [ -n "$url" ]; then
@@ -204,8 +207,8 @@ for target in "${TARGETS[@]}"; do
     failed)
       git checkout $current_source
       tmp=upmerge/$(date +%d%m%Y%H%M%S)
-      git checkout -b $tmp
-      git push -u origin $tmp
+      git checkout -b "$tmp"
+      git push -u origin "$tmp"
       pr_url="$(ensure_fallback_pr "$tmp" "$current_source" "$target")"
       if [ -n "$pr_url" ]; then
         echo "| ${hop_number} | \`${current_source}\` | \`${target}\` | ❌ Konflikt/Push abgelehnt - Fallback-PR: ${pr_url} |" >> "$SUMMARY"
