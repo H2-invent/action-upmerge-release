@@ -165,8 +165,8 @@ ensure_fallback_pr() {
   fi
 
   gh pr create \
-    --base "${tmp}" \
-    --head "${source}" \
+    --base "${target}" \
+    --head "${tmp}" \
     --title "Upmerge ${source} -> ${target}" \
     --body "Automatischer Upmerge ist hier gestoppt (Konflikt oder Push nicht möglich, z.B. Branch-Protection). Bitte manuell auflösen und mergen - danach läuft die Kette beim nächsten Trigger automatisch weiter." \
     2>/dev/null | tail -n1
