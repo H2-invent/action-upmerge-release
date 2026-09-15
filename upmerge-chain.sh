@@ -157,9 +157,6 @@ attempt_hop() {
 ensure_fallback_pr() {
   local tmp="$1" source="$2" target="$3"
   local url
-  echo "Tmp Branch: $tmp"
-  echo "Source Branch: $source"
-  echo "Base Branch: $target"
   url="$(gh pr list --head "${tmp}" --base "${target}" --state open --json url --jq '.[0].url // empty' 2>/dev/null || true)"
 
   if [ -n "$url" ]; then
