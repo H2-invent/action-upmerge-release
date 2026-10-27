@@ -10,11 +10,17 @@
 #
 #   release/X.Y -> release/<naechsthoehere> -> ...
 #
+# Alle Änderungen werden übernommen AUSSER der Datei $EXCLUDED_FILE
+# (RELEASE_NOTES.md): Diese bleibt im Ziel-Branch immer auf dessen
+# eigenem Stand. Konflikte, die nur diese Datei betreffen, werden
+# automatisch zugunsten des Ziel-Branches aufgelöst.
+#
 # Läuft so lange weiter, bis entweder alle Branches durch sind, oder
 # ein Hop fehlschlägt (Merge-Konflikt oder Push abgelehnt, z.B. durch
 # Branch-Protection). In diesem Fall wird EIN Fallback-PR für genau
 # diesen Hop erstellt (idempotent - kein Duplikat, wenn schon einer
-# offen ist) und die Kette dort gestoppt.
+# offen ist) und die Kette dort gestoppt. Auch der Fallback-PR bringt
+# $EXCLUDED_FILE nicht mit.
 #
 # Anders als eine Lösung über mehrere Jobs/Workflow-Läufe ist das hier
 # bewusst EIN Skript in einem Job: ein Push mit GITHUB_TOKEN löst
@@ -38,6 +44,7 @@ set -uo pipefail
 
 MAIN_BRANCH_REGEX='^(main|master)$'
 RELEASE_BRANCH_REGEX='^release/([0-9]+)\.([0-9]+)$'
+EXCLUDED_FILE="RELEASE_NOTE.md"
 
 : "${GITHUB_EVENT_NAME:?GITHUB_EVENT_NAME muss gesetzt sein}"
 : "${BASE_REF:?BASE_REF muss gesetzt sein}"
@@ -81,6 +88,18 @@ release_versions_greater_than() {
     function ver(v,  a){split(v,a,"."); return a[1]*100000+a[2]}
     { if (ver($0) > ver(base)) print }
   '
+}
+
+# Setzt $EXCLUDED_FILE in Index + Worktree auf den Stand von $1 (z.B. HEAD = Ziel).
+# Existiert die Datei dort nicht, wird sie entfernt. Löst dabei auch Konflikte
+# auf dieser Datei auf.
+keep_excluded_from() {
+  local ref="$1"
+  if git cat-file -e "${ref}:${EXCLUDED_FILE}" 2>/dev/null; then
+    git checkout "${ref}" -- "${EXCLUDED_FILE}"
+  else
+    git rm -q -f --ignore-unmatch -- "${EXCLUDED_FILE}"
+  fi
 }
 
 # --- Kette aufbauen ---------------------------------------------------------
@@ -135,6 +154,7 @@ fi
 attempt_hop() {
   local source="$1" target="$2"
 
+  git merge --abort 2>/dev/null || true
   git reset --hard --quiet 2>/dev/null || true
   git fetch --quiet origin "${source}" "${target}"
   git checkout -B chain-work "origin/${target}" --quiet
@@ -144,7 +164,26 @@ attempt_hop() {
     return
   fi
 
-  if git merge --no-ff "origin/${source}" -m "Merge ${source} into ${target} (upmerge-chain)" --quiet 2>/tmp/merge-error.log \
+  # Merge vorbereiten, aber nicht committen (Konflikte werden unten geprüft)
+  git merge --no-ff --no-commit "origin/${source}" --quiet 2>/tmp/merge-error.log || true
+
+  # Kein MERGE_HEAD = Merge wurde gar nicht gestartet (anderer Fehler)
+  if ! git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+    HOP_STATUS="failed"
+    return
+  fi
+
+  # RELEASE_NOTES.md immer vom Ziel-Branch behalten
+  keep_excluded_from HEAD
+
+  # Bleiben echte Konflikte in anderen Dateien übrig -> Fallback
+  if [ -n "$(git diff --name-only --diff-filter=U)" ]; then
+    git merge --abort 2>/dev/null || true
+    HOP_STATUS="failed"
+    return
+  fi
+
+  if git commit --quiet -m "Merge ${source} into ${target} (upmerge-chain, ohne ${EXCLUDED_FILE})" \
      && git push origin "HEAD:${target}" --quiet 2>>/tmp/merge-error.log; then
     HOP_STATUS="merged"
   else
@@ -169,7 +208,7 @@ ensure_fallback_pr() {
     --head "${tmp}" \
     --title "Upmerge ${source} -> ${target}" \
     --label "no changelog" \
-    --body "Automatischer Upmerge ist hier gestoppt (Konflikt oder Push nicht möglich, z.B. Branch-Protection). Bitte manuell auflösen und mergen - danach läuft die Kette beim nächsten Trigger automatisch weiter." \
+    --body "Automatischer Upmerge ist hier gestoppt (Konflikt oder Push nicht möglich, z.B. Branch-Protection). Bitte manuell auflösen und mergen - danach läuft die Kette beim nächsten Trigger automatisch weiter. Hinweis: ${EXCLUDED_FILE} wird bewusst nicht übernommen." \
     2>/dev/null | tail -n1
 }
 
@@ -177,7 +216,7 @@ ensure_fallback_pr() {
 {
   echo "## Upmerge-Kette"
   echo ""
-  echo "Start: \`${START_SOURCE}\`"
+  echo "Start: \`${START_SOURCE}\` (ausgenommen: \`${EXCLUDED_FILE}\`)"
   echo ""
   echo "| Hop | Von | Nach | Ergebnis |"
   echo "|---|---|---|---|"
@@ -203,10 +242,14 @@ for target in "${TARGETS[@]}"; do
       current_source="$target"
       ;;
     failed)
-      git checkout $current_source
-      tmp=upmerge/$(date +%d%m%Y%H%M%S)
-      git checkout -b "$tmp"
-      git push -u origin "$tmp"
+      git merge --abort 2>/dev/null || true
+      git reset --hard --quiet
+      tmp="upmerge/$(date +%d%m%Y%H%M%S)"
+      git checkout -B "$tmp" "origin/${current_source}" --quiet
+      # Release Notes im PR-Branch auf Ziel-Stand setzen -> PR bringt sie nicht mit
+      keep_excluded_from "origin/${target}"
+      git commit --quiet -m "Upmerge: ${EXCLUDED_FILE} aus ${target} beibehalten" || true
+      git push -u origin "$tmp" --quiet
       pr_url="$(ensure_fallback_pr "$tmp" "$current_source" "$target")"
       if [ -n "$pr_url" ]; then
         echo "| ${hop_number} | \`${current_source}\` | \`${target}\` | ❌ Konflikt/Push abgelehnt - Fallback-PR: ${pr_url} |" >> "$SUMMARY"
