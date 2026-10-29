@@ -253,11 +253,12 @@ for target in "${TARGETS[@]}"; do
       pr_url="$(ensure_fallback_pr "$tmp" "$current_source" "$target")"
       if [ -n "$pr_url" ]; then
         echo "| ${hop_number} | \`${current_source}\` | \`${target}\` | ❌ Konflikt/Push abgelehnt - Fallback-PR: ${pr_url} |" >> "$SUMMARY"
+        exit_code=0
       else
         echo "| ${hop_number} | \`${current_source}\` | \`${target}\` | ❌ Konflikt/Push abgelehnt - Fallback-PR konnte nicht erstellt werden |" >> "$SUMMARY"
+        exit_code=1
       fi
       stopped_at="$target"
-      exit_code=1
       break
       ;;
   esac
